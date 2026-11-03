@@ -4,21 +4,21 @@ Telegram bot with subscriber management, admin broadcasts, channel posting, and 
 
 ## Vercel + Neon deployment
 
-Use the JavaScript serverless functions in `api/`. Do not run the old `bot.py` polling process on Vercel.
+Use the Python serverless functions in `api/`. Do not run the old `bot.py` polling process on Vercel.
 
 ### 1. Neon database
 
 1. Create a free project at https://neon.tech.
 2. Open **Connect** for the `production` branch.
 3. Select the pooled connection string (the hostname contains `-pooler`) and copy the full PostgreSQL URL.
-4. Keep the URL private. The app creates the `subscribers` table automatically on the first webhook update. You can also run `schema.sql` in Neon SQL Editor.
+4. Keep the URL private. The app creates the `subscribers` table automatically on the first webhook update. The webhook creates the `subscribers` table automatically.
 
 ### 2. Import to Vercel
 
 1. In Vercel, choose **Add New → Project**.
 2. Import `deviljaat5102/telegram-super-bot`.
 3. Root Directory: `./`.
-4. The Vercel functions are JavaScript files in `api/`.
+4. The Vercel functions are Python files in `api/`.
 
 ### 3. Environment variables
 
@@ -63,7 +63,7 @@ The setup URL contains a secret. Do not share it or post a screenshot that revea
 
 ## Database
 
-Subscriber records are stored in Neon PostgreSQL, not the Vercel filesystem. The schema is in `schema.sql`.
+Subscriber records are stored in Neon PostgreSQL, not the Vercel filesystem. The webhook creates the required subscriber table automatically.
 
 ## Legacy local runner
 
