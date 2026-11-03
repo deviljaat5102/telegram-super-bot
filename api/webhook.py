@@ -226,6 +226,47 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        # One-time webhook setup endpoint: /api/webhook?key=SETUP_SECRET
+        from urllib.parse import parse_qs, urlparse
+
+        supplied_key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
+        setup_key = os.environ.get("SETUP_SECRET", "").strip()
+        if supplied_key:
+            if not setup_key or not hmac.compare_digest(supplied_key, setup_key):
+                self.send_response(403)
+                self.end_headers()
+                self.wfile.write(b"Forbidden")
+                return
+
+            public_url = os.environ.get("PUBLIC_URL", "").strip()
+            vercel_url = os.environ.get("VERCEL_URL", "").strip()
+            base_url = public_url or (f"https://{vercel_url}" if vercel_url else "")
+            webhook_secret = env("WEBHOOK_SECRET")
+            if not base_url:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(b"Missing PUBLIC_URL or VERCEL_URL")
+                return
+
+            webhook_url = base_url.rstrip("/") + "/api/webhook"
+            payload = {
+                "url": webhook_url,
+                "secret_token": webhook_secret,
+                "allowed_updates": ["message", "edited_message"],
+                "drop_pending_updates": False,
+            }
+            try:
+                result = telegram("setWebhook", payload)
+                body = json.dumps({"ok": True, "webhook_url": webhook_url, "telegram": result}).encode("utf-8")
+                self.send_response(200)
+            except Exception as exc:
+                body = json.dumps({"ok": False, "error": str(exc)}).encode("utf-8")
+                self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
