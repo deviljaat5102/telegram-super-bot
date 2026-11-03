@@ -39,7 +39,7 @@ Never paste these secrets into chat or commit them to GitHub.
 
 1. Deploy the project and wait until Vercel reports **Ready**.
 2. Open this URL once in your browser, replacing both placeholders:
-   `https://YOUR-PROJECT.vercel.app/api/setup?key=YOUR_SETUP_SECRET`
+   `https://YOUR-PROJECT.vercel.app/api/webhook?key=YOUR_SETUP_SECRET`
 3. A successful response has `"ok": true` and Telegram's `"Webhook was set"` description.
 4. Remove `SETUP_SECRET` from Vercel environment variables after successful setup, then redeploy. The webhook keeps working.
 
