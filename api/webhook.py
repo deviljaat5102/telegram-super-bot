@@ -201,7 +201,7 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         expected = env("WEBHOOK_SECRET")
         received = self.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if not hmac.compare_digest(received, expected):
+        if not hmac.compare_digest(received.encode("utf-8"), expected.encode("utf-8")):
             self.send_response(403)
             self.end_headers()
             self.wfile.write(b"Forbidden")
@@ -232,7 +232,7 @@ class handler(BaseHTTPRequestHandler):
         supplied_key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
         setup_key = os.environ.get("SETUP_SECRET", "").strip()
         if supplied_key:
-            if not setup_key or not hmac.compare_digest(supplied_key, setup_key):
+            if not setup_key or not hmac.compare_digest(supplied_key.encode("utf-8"), setup_key.encode("utf-8")):
                 self.send_response(403)
                 self.end_headers()
                 self.wfile.write(b"Forbidden")
