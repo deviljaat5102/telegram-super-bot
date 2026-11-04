@@ -238,6 +238,31 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Forbidden")
                 return
 
+            # Read Telegram's current webhook delivery status without changing it.
+            query = parse_qs(urlparse(self.path).query)
+            if query.get("status", [""])[0] == "1":
+                try:
+                    info = telegram("getWebhookInfo", {})
+                    safe_info = {
+                        "url": info.get("url", ""),
+                        "has_custom_certificate": info.get("has_custom_certificate", False),
+                        "pending_update_count": info.get("pending_update_count", 0),
+                        "ip_address": info.get("ip_address", ""),
+                        "last_error_date": info.get("last_error_date"),
+                        "last_error_message": info.get("last_error_message", ""),
+                        "max_connections": info.get("max_connections"),
+                        "allowed_updates": info.get("allowed_updates", []),
+                    }
+                    body = json.dumps({"ok": True, "webhook_info": safe_info}).encode("utf-8")
+                    self.send_response(200)
+                except Exception as exc:
+                    body = json.dumps({"ok": False, "error": str(exc)}).encode("utf-8")
+                    self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
             public_url = os.environ.get("PUBLIC_URL", "").strip()
             vercel_url = os.environ.get("VERCEL_URL", "").strip()
             base_url = public_url or (f"https://{vercel_url}" if vercel_url else "")
