@@ -58,6 +58,13 @@ def init_db():
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS business_first_contacts (
+                chat_id BIGINT PRIMARY KEY,
+                user_id BIGINT,
+                first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
 
 
 def add_subscriber(user):
@@ -118,7 +125,66 @@ def send_text(chat_id, text):
     return telegram("sendMessage", {"chat_id": chat_id, "text": text})
 
 
+def handle_business_message(message):
+    # Send the configured welcome audio + text only for the first message
+    # received from each private chat after the business bot is connected.
+    business_connection_id = message.get("business_connection_id")
+    chat = message.get("chat") or {}
+    user = message.get("from") or {}
+    chat_id = chat.get("id")
+    if not business_connection_id or not chat_id or chat.get("type") != "private":
+        return
+
+    with db_connect() as conn:
+        inserted = conn.execute(
+            """
+            INSERT INTO business_first_contacts (chat_id, user_id)
+            VALUES (%s, %s)
+            ON CONFLICT (chat_id) DO NOTHING
+            RETURNING chat_id
+            """,
+            (chat_id, user.get("id")),
+        ).fetchone()
+
+    if not inserted:
+        return
+
+    audio_file_id = os.getenv("BUSINESS_AUDIO_FILE_ID", "").strip()
+    audio_method = os.getenv("BUSINESS_AUDIO_METHOD", "sendVoice").strip()
+    if audio_file_id and audio_method in ("sendVoice", "sendAudio"):
+        try:
+            telegram(
+                audio_method,
+                {
+                    "business_connection_id": business_connection_id,
+                    "chat_id": chat_id,
+                    "voice" if audio_method == "sendVoice" else "audio": audio_file_id,
+                },
+            )
+        except Exception as exc:
+            print(f"Business welcome audio failed: {exc}")
+
+    reply_text = os.getenv(
+        "BUSINESS_AUTO_REPLY",
+        os.getenv("AUTO_REPLY", "Thanks for contacting us! Our team will get back to you soon."),
+    ).strip()
+    if reply_text:
+        telegram(
+            "sendMessage",
+            {
+                "business_connection_id": business_connection_id,
+                "chat_id": chat_id,
+                "text": reply_text,
+            },
+        )
+
+
 def handle_update(update):
+    business_message = update.get("business_message")
+    if business_message:
+        handle_business_message(business_message)
+        return
+
     # Replies posted in the support channel are sent back to the original user.
     channel_post = update.get("channel_post") or update.get("edited_channel_post")
     if channel_post:
@@ -335,7 +401,11 @@ class handler(BaseHTTPRequestHandler):
             payload = {
                 "url": webhook_url,
                 "secret_token": webhook_secret,
-                "allowed_updates": ["message", "edited_message", "channel_post", "edited_channel_post"],
+                "allowed_updates": [
+                    "message", "edited_message", "channel_post", "edited_channel_post",
+                    "business_connection", "business_message", "edited_business_message",
+                    "deleted_business_messages",
+                ],
                 "drop_pending_updates": False,
             }
             try:
