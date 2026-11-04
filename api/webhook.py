@@ -51,6 +51,13 @@ def init_db():
                 joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS channel_message_map (
+                channel_message_id BIGINT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
 
 
 def add_subscriber(user):
@@ -86,11 +93,51 @@ def subscriber_count():
     return row[0]
 
 
+def save_channel_message(channel_message_id, user_id):
+    with db_connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO channel_message_map (channel_message_id, user_id)
+            VALUES (%s, %s)
+            ON CONFLICT (channel_message_id) DO UPDATE SET user_id = EXCLUDED.user_id
+            """,
+            (channel_message_id, user_id),
+        )
+
+
+def find_original_user(channel_message_id):
+    with db_connect() as conn:
+        row = conn.execute(
+            "SELECT user_id FROM channel_message_map WHERE channel_message_id = %s",
+            (channel_message_id,),
+        ).fetchone()
+    return row[0] if row else None
+
+
 def send_text(chat_id, text):
     return telegram("sendMessage", {"chat_id": chat_id, "text": text})
 
 
 def handle_update(update):
+    # Replies posted in the support channel are sent back to the original user.
+    channel_post = update.get("channel_post") or update.get("edited_channel_post")
+    if channel_post:
+        channel_id = str(channel_post.get("chat", {}).get("id", ""))
+        configured_channel = env("CHANNEL_ID")
+        if channel_id == configured_channel or channel_id == str(configured_channel):
+            reply = channel_post.get("reply_to_message") or {}
+            original_user_id = find_original_user(reply.get("message_id")) if reply.get("message_id") else None
+            if original_user_id:
+                telegram(
+                    "copyMessage",
+                    {
+                        "chat_id": original_user_id,
+                        "from_chat_id": channel_post.get("chat", {}).get("id"),
+                        "message_id": channel_post["message_id"],
+                    },
+                )
+        return
+
     message = update.get("message") or update.get("edited_message")
     if not message:
         return
@@ -194,6 +241,17 @@ def handle_update(update):
         return
 
     if chat.get("type") == "private" and not is_admin:
+        # Copy the complete user message (text, photo, video, document, etc.)
+        # into the support channel and remember its channel message ID.
+        copied = telegram(
+            "copyMessage",
+            {
+                "chat_id": channel_id,
+                "from_chat_id": chat_id,
+                "message_id": message["message_id"],
+            },
+        )
+        save_channel_message(copied["message_id"], user_id)
         send_text(chat_id, auto_reply)
 
 
@@ -277,7 +335,7 @@ class handler(BaseHTTPRequestHandler):
             payload = {
                 "url": webhook_url,
                 "secret_token": webhook_secret,
-                "allowed_updates": ["message", "edited_message"],
+                "allowed_updates": ["message", "edited_message", "channel_post", "edited_channel_post"],
                 "drop_pending_updates": False,
             }
             try:
