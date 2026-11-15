@@ -68,3 +68,22 @@ Subscriber records are stored in Neon PostgreSQL, not the Vercel filesystem. The
 ## Legacy local runner
 
 `bot.py` is the original Python long-polling version for an always-on Python host. It uses SQLite and is not used by the Vercel webhook deployment.
+
+
+## Automatic enquiry follow-ups (Vercel)
+
+The Vercel webhook sends `AUTO_REPLY` immediately when a user sends a private message. It then schedules:
+- `FOLLOWUP_1H_MESSAGE`: one hour after the latest inbound message.
+- `FOLLOWUP_1D_MESSAGE`: 24 hours after the latest inbound message.
+
+A new message from the same user restarts the two-message sequence. `/stop` cancels scheduled follow-ups.
+
+Add these Production environment variables in Vercel:
+- `FOLLOWUP_CRON_SECRET`: a long random secret (keep private).
+- `FOLLOWUP_1H_MESSAGE`: optional first follow-up text.
+- `FOLLOWUP_1D_MESSAGE`: optional next-day follow-up text.
+
+The scheduler endpoint is `GET /api/followups` and requires the header
+`Authorization: Bearer YOUR_FOLLOWUP_CRON_SECRET`. Because Vercel Hobby cron is daily-only,
+configure an external free scheduler such as https://cron-job.org to call the production
+endpoint every 5 minutes with that Authorization header. Do not put the secret in the URL.
