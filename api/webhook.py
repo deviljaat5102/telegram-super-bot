@@ -74,6 +74,12 @@ def init_db():
                 active BOOLEAN NOT NULL DEFAULT TRUE
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS processed_updates (
+                update_id BIGINT PRIMARY KEY,
+                processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
 
 
 def add_subscriber(user):
@@ -189,6 +195,22 @@ def handle_business_message(message):
 
 
 def handle_update(update):
+    update_id = update.get("update_id")
+    if update_id is not None:
+        with db_connect() as conn:
+            inserted = conn.execute(
+                """
+                INSERT INTO processed_updates (update_id)
+                VALUES (%s)
+                ON CONFLICT (update_id) DO NOTHING
+                RETURNING update_id
+                """,
+                (update_id,),
+            ).fetchone()
+        if not inserted:
+            print(f"Skipping duplicate Telegram update {update_id}")
+            return
+
     business_message = update.get("business_message")
     if business_message:
         handle_business_message(business_message)
@@ -329,11 +351,7 @@ def handle_update(update):
                 INSERT INTO followup_schedules
                     (chat_id, user_id, first_message_at, next_stage, active)
                 VALUES (%s, %s, NOW(), 1, TRUE)
-                ON CONFLICT (chat_id) DO UPDATE SET
-                    user_id = EXCLUDED.user_id,
-                    first_message_at = NOW(),
-                    next_stage = 1,
-                    active = TRUE
+                ON CONFLICT (chat_id) DO NOTHING
                 """,
                 (chat_id, user_id),
             )
