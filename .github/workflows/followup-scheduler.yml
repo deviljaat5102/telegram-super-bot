@@ -1,0 +1,26 @@
+name: Telegram follow-up scheduler
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send-followups:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process due Telegram follow-ups
+        env:
+          FOLLOWUP_CRON_SECRET: ${{ secrets.FOLLOWUP_CRON_SECRET }}
+        run: |
+          if [ -z "$FOLLOWUP_CRON_SECRET" ]; then
+            echo "Missing GitHub Actions secret FOLLOWUP_CRON_SECRET"
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            --request GET \
+            --header "Authorization: Bearer $FOLLOWUP_CRON_SECRET" \
+            "https://telegram-super-bot-surendergames70000-4892.vercel.app/api/followups"
