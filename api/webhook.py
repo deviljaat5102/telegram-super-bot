@@ -65,6 +65,15 @@ def init_db():
                 first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS followup_schedules (
+                chat_id BIGINT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                first_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                next_stage SMALLINT NOT NULL DEFAULT 1,
+                active BOOLEAN NOT NULL DEFAULT TRUE
+            )
+        """)
 
 
 def add_subscriber(user):
@@ -234,6 +243,11 @@ def handle_update(update):
 
     if command == "/stop":
         remove_subscriber(user_id)
+        with db_connect() as conn:
+            conn.execute(
+                "UPDATE followup_schedules SET active = FALSE WHERE chat_id = %s",
+                (chat_id,),
+            )
         send_text(chat_id, "You have been unsubscribed.")
         return
 
@@ -307,6 +321,23 @@ def handle_update(update):
         return
 
     if chat.get("type") == "private" and not is_admin:
+        # Each new inbound message starts a fresh follow-up sequence.
+        # The 1-hour and 24-hour messages are measured from this message.
+        with db_connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO followup_schedules
+                    (chat_id, user_id, first_message_at, next_stage, active)
+                VALUES (%s, %s, NOW(), 1, TRUE)
+                ON CONFLICT (chat_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    first_message_at = NOW(),
+                    next_stage = 1,
+                    active = TRUE
+                """,
+                (chat_id, user_id),
+            )
+
         # Copy the complete user message (text, photo, video, document, etc.)
         # into the support channel and remember its channel message ID.
         copied = telegram(
