@@ -23,4 +23,4 @@ jobs:
           curl --fail --silent --show-error \
             --request GET \
             --header "Authorization: Bearer $FOLLOWUP_CRON_SECRET" \
-            "https://telegram-super-bot-surendergames70000-4892.vercel.app/api/followups"
+            "https://telegram-super-bot-seven.vercel.app/api/followups"
