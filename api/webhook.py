@@ -351,7 +351,11 @@ def handle_update(update):
                 INSERT INTO followup_schedules
                     (chat_id, user_id, first_message_at, next_stage, active)
                 VALUES (%s, %s, NOW(), 1, TRUE)
-                ON CONFLICT (chat_id) DO NOTHING
+                ON CONFLICT (chat_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    first_message_at = NOW(),
+                    next_stage = 1,
+                    active = TRUE
                 """,
                 (chat_id, user_id),
             )
